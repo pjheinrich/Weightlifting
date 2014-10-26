@@ -1,0 +1,43 @@
+# Predicting Weightlifting Workout Errors from Sensor Data
+ 
+## Background
+ 
+In the gym or at home, tiny electronic monitoring devices can track performance on physical activities such as weightlifting, offering users an opportunity to gain feedback not only on what they're doing, but also on how well they are doing it.  One recent study (Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises.  Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13).  Stuttgart, Germany: ACM SIGCHI, 2013.  Link at http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf)  tracked accelerometer and gyroscope data from four different sensors as users lifted dumbbells.  The authors asked the study participants to either perform the exercise correctly (class A) or make one of four deliberate mistakes:  throwing elbows forward (class B), lifting the dumbbell only halfway (class C), lowering the dumbbell only halfway (class D), or throwing the hips to the front (class E).  The task, then, is to see if the sensor data can be used to predict whether a particular weightlifting action was done correctly or in error, and if in error, which mistake was made.
+
+## Data 
+
+The original training dataset consists of 19,622 the dependent variable (classe, with letter values as specified above) plus 159 variables that fall into three groups:  7 identifiers (participant name, time of exercise, window), 52 well-specified original data readings from sensors on arm, glove, dumbbell, and belt (e.g., roll_belt is roll from the belt sensor), and 100 aggregate calculations of the 51 sensor readings, interspersed into the windows (where the New Window variable  =  yes).  
+
+```{r training} 
+training <-read.csv(file="C:/Users/Phil/Downloads/pml-training.csv",stringsAsFactors=FALSE)
+dim (training)
+```
+The documentation describing the experiment talked of time windows varying between 0.5 and 2.5 seconds, but no such indicator exists in the data.  Since within a given window, the outcome value classe is always the same, it suggests that the dataset contains multiple rows of information for the same experiment - a violation of tidy data principles.  
+
+Since there was no guarantee that the aggregrate variables would appear in the test data, the prudent course was to eliminate them as well as the identifying variables, leaving 52 numeric variables for use as predictors:  roll, pitch, yaw, total acceleration, gyroscope x/y/z, acceleration x/y/z, and magnetometer x/y/z for belt, arm, dumbbell, and forearm.
+
+```{r trainlite} 
+trainlite <- training[,c(160,7:11,37:49,60:68,84:86,102,113:124,140,151:159)]
+dim (trainlite)
+```
+
+In the interest of time and of using the caret package, I elected to aggregate the data within each window, and taking the mean for each predictor.  Admittedly, this reduces the predictive power of the model, but it also reduces the size of the data set by a factor of 20, making it far easier to run multiple iterations within training.  The caret package offers multiple choices for building classification models.  I selected the random forest model, as it produces high predictive accuracy with no need for pre-processing and can work perfectly well using the default settings in caret.  
+
+```{r trainliteagg} 
+trainliteagg <- aggregate(.~classe+num_window,data=trainlite, mean)
+dim (trainliteagg)
+```
+
+
+## Results
+
+Running a random forest model on the aggregated training data yielded an accuracy of 87.2% with the mtry tuning parameter set at 2.   The out-of-boundary estimated error rate is 10.84%.  Running this model against the test dataset yielded a success rate of 80% -- 16 out of 20 correct.
+
+``` {r Modelfit}
+library(caret)
+modelfit <-train(as.factor(trainliteagg$classe)~.,method="rf",data=trainliteagg[,c(-1,-2)])
+modelfit
+modelfit$finalModel
+```
+
+The downside of using a random forest model is reduced interpretability.  Since multiple trees are used and each tree gets a vote, examining any tree individually provides only a partial sense of which variables had the most importance to the model. 
